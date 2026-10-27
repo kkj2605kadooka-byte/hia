@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#08090b">
+<title>野崎守を殴る v26.17 — 多言語対応</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#08090b;color:#fff;font-family:system-ui,-apple-system,sans-serif;overscroll-behavior:none;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+main{min-height:100dvh;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;padding:12px 10px calc(18px + env(safe-area-inset-bottom))}
+.viewing-area{display:flex;align-items:center;justify-content:center;gap:12px;width:min(100%,1200px)}
+.stage{position:relative;flex:1 1 auto;min-width:0;width:100%;aspect-ratio:1170/639;background:#08090b;overflow:hidden;touch-action:manipulation}
+
+/* 静止画とGIFをまったく同じ位置・サイズでレイヤー重ね合わせするCSS */
+.stage img, .stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.05s ease}
+.stage canvas{pointer-events:none}
+
+/* 左右反転（鏡返し）用のスタイルクラス */
+.flip-x {
+  transform: scaleX(-1);
+}
+
+/* 背面の静止画：ボタンを押す前から背面に常時表示 */
+#idle {
+  z-index: 1;
+  display: block;
+}
+
+/* 前面の攻撃GIF：ボタン押下時のみ静止画の上に重ねて表示 */
+#animGif {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.controls{display:flex;gap:12px;width:min(100%,700px)}
+button{font:700 17px system-ui;touch-action:manipulation;-webkit-tap-highlight-color:transparent;color:#fff;background:#242429;border:1px solid #555;border-radius:11px;padding:12px 15px;cursor:pointer}
+button:active{background:#505059}
+.language-bar{width:min(100%,1200px);display:flex;justify-content:flex-end;align-items:center;gap:8px;color:#ddd;font-size:13px}
+.language-bar select{min-height:36px;padding:6px 28px 6px 10px;background:#1b1b21;color:#fff;border:1px solid #555;border-radius:9px;font-size:14px;cursor:pointer;touch-action:manipulation}
+.language-bar select:focus-visible{outline:2px solid #88aaff;outline-offset:2px}button:disabled{opacity:.42}
+.controls button{flex:1;font-size:clamp(18px,4vw,24px);padding:21px 8px}
+small{color:#aaa;font-size:12px;text-align:center}
+.music-toggle{width:min(100%,370px);background:#303039}
+.music-panel{width:min(100%,700px);padding:14px;background:#17171b;border:1px solid #45454d;border-radius:13px}
+.music-panel h3{margin:0 0 10px;font-size:17px}
+.music-panel label{display:block;font-size:13px;color:#ccc;margin-bottom:6px}
+.music-panel input[type=url]{width:100%;min-width:0;font:16px system-ui;padding:12px;background:#09090b;color:#fff;border:1px solid #666;border-radius:8px;user-select:text;-webkit-user-select:text}
+.music-panel button{font-size:14px;padding:10px 13px}
+.music-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.music-row .range{flex:1;min-width:95px}
+.music-panel p{font-size:12px;color:#bababa;line-height:1.55;margin:9px 0 0}
+#musicNote{color:#e9c995}
+.now-playing{flex:0 0 clamp(245px,29vw,335px);min-width:0;padding:7px;background:#17171b;border:1px solid #505057;border-radius:12px}
+.now-playing-title{font-size:13px;font-weight:700;margin:0 0 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.now-playing iframe,.now-playing video{display:block;width:100%;height:188px;border:0;border-radius:6px;background:#050505}
+.now-playing #youtubeMount{width:100%;height:188px}
+.now-playing #youtubeMount iframe{height:100%}
+.range:disabled{opacity:.42;cursor:not-allowed}
+.music-panel .volume-help{color:#ffc46e;border-left:3px solid #ffc46e;padding-left:8px;font-size:12px}
+.now-playing.audio-only video{height:55px}
+[hidden]{display:none!important}
+@media(max-width:740px){main{justify-content:flex-start;gap:9px}.viewing-area{flex-direction:column;gap:7px}.viewing-area .now-playing{order:-1;flex:none;width:min(100%,530px);padding:5px 8px}.now-playing-title{font-size:12px;margin-bottom:4px}.now-playing iframe,.now-playing video,.now-playing #youtubeMount{height:clamp(130px,36vw,180px)}.now-playing.audio-only video{height:48px}.stage{width:100%}}
+#leftBtn,#rightBtn{touch-action:none;-webkit-user-select:none;user-select:none}
+</style>
+</head>
+<body>
+<main>
+<div class="language-bar">
+  <label for="languageSelect" data-i18n="languageLabel">🌐 言語</label>
+  <select id="languageSelect" aria-label="Language / 言語">
+    <option value="ja">日本語</option>
+    <option value="en">English</option>
+    <option value="zh">简体中文</option>
+    <option value="ko">한국어</option>
+  </select>
+</div>
+<div class="viewing-area">
+  <div class="stage">
+    <!-- 1. 静止画像（ボタンを押す前から背面に常時表示） -->
+    <img id="idle" src="【VIVANT】私に嘘はつかないで～！｜TBS系日曜よる9時放送／全話配信はU-NEXT独占！ (1)00.jpg" alt="野崎守を殴る" data-i18n-alt="imageAlt">
+    <!-- 2. 攻撃GIF（通常は非表示、ボタン押下時のみ前面に表示） -->
+    <img id="animGif" src="" hidden alt="攻撃アニメーション">
+    <canvas id="screen" width="512" height="280" hidden></canvas>
+  </div>
+  <div class="now-playing" id="nowPlaying" hidden>
+    <div class="now-playing-title" id="nowPlayingTitle" data-i18n="nowPlayingDefault">再生中の曲</div>
+    <video id="musicMedia" controls playsinline preload="metadata" hidden></video>
+    <div id="youtubeMount" hidden></div>
+  </div>
+</div>
+<div class="controls">
+  <button disabled type="button" id="leftBtn" data-i18n="leftPunch">左パンチ</button>
+  <button disabled type="button" id="rightBtn" data-i18n="rightPunch">右パンチ</button>
+</div>
+<button class="music-toggle" type="button" id="musicToggle" aria-expanded="false" aria-controls="musicPanel" data-i18n="musicOpen">♫ 好きな曲を流す</button>
+<small id="status" role="status" data-i18n="loading"></small>
+<small>v26.17 · <span data-i18n="keyboardHint">PC: Q / A / Z 左パンチ・E / D / C 右パンチ</span></small>
+
+<section class="music-panel" id="musicPanel" hidden>
+  <h3 data-i18n="musicHeader">URLで好きな曲を流す</h3>
+  <form id="musicForm">
+    <label for="musicURL" data-i18n="urlLabel">YouTube／音声・動画のURL</label>
+    <input id="musicURL" type="url" inputmode="url" placeholder="https://youtu.be/… または https://…/music.mp3" required>
+    <div class="music-row">
+      <button type="submit" id="musicLoad" data-i18n="loadUrl">URLを読み込む</button>
+      <button type="button" id="musicPlay" data-i18n="play">▶ 再生</button>
+      <button type="button" id="musicPause" data-i18n="pause">一時停止</button>
+      <button type="button" id="musicStop" data-i18n="stop">停止</button>
+    </div>
+  </form>
+  <div class="music-row">
+    <label for="punchVolume" style="margin:0" data-i18n="volumePunch">パンチ音量</label>
+    <input class="range" id="punchVolume" type="range" min="0" max="100" step="1" value="100" aria-label="Punch sound volume">
+    <span id="punchVolumeValue">100%</span>
+  </div>
+  <p id="musicNote" role="status" data-i18n="musicInitial">曲のURLを貼り付けて「URLを読み込む」を押してください。</p>
+  <p data-i18n="helpText">曲はパンチ中も再生できます。YouTubeは動画内の再生ボタンで操作できます。画面録画はiPhoneの画面収録を使ってください。</p>
+</section>
+</main>
+
+<script>
+/* =========================================================
+   1. 多言語対応 (i18n) モジュール
+   ========================================================= */
+const I18N_DATA = {
+  ja: {
+    languageLabel: "🌐 言語",
+    imageAlt: "野崎守を殴る",
+    leftPunch: "左パンチ",
+    rightPunch: "右パンチ",
+    musicOpen: "♫ 好きな曲を流す",
+    musicClose: "♫ 曲の操作を閉じる",
+    keyboardHint: "PC: Q / A / Z 左パンチ・E / D / C 右パンチ",
+    musicHeader: "URLで好きな曲を流す",
+    urlLabel: "YouTube／音声・動画のURL",
+    loadUrl: "URLを読み込む",
+    play: "▶ 再生",
+    pause: "一時停止",
+    stop: "停止",
+    volumePunch: "パンチ音量",
+    musicInitial: "曲のURLを貼り付けて「URLを読み込む」を押してください。",
+    helpText: "曲はパンチ中も再生できます。YouTubeは動画内の再生ボタンで操作できます。画面録画はiPhoneの画面収録を使ってください。",
+    nowPlayingDefault: "再生中の曲",
+    invalidUrl: "http:// または https:// で始まるURLを入力してください。"
+  },
+  en: {
+    languageLabel: "🌐 Language",
+    imageAlt: "Punch Nozaki Mamoru",
+    leftPunch: "Left Punch",
+    rightPunch: "Right Punch",
+    musicOpen: "♫ Play Music",
+    musicClose: "♫ Close Music Controls",
+    keyboardHint: "PC: Q / A / Z Left Punch · E / D / C Right Punch",
+    musicHeader: "Play Music via URL",
+    urlLabel: "YouTube / Audio / Video URL",
+    loadUrl: "Load URL",
+    play: "▶ Play",
+    pause: "Pause",
+    stop: "Stop",
+    volumePunch: "Punch Volume",
+    musicInitial: "Paste a track URL and click 'Load URL'.",
+    helpText: "Music keeps playing during punches. For YouTube, use the player buttons inside.",
+    nowPlayingDefault: "Now Playing",
+    invalidUrl: "Please enter a valid URL starting with http:// or https://."
+  },
+  zh: {
+    languageLabel: "🌐 语言",
+    imageAlt: "揍野崎守",
+    leftPunch: "左出拳",
+    rightPunch: "右出拳",
+    musicOpen: "♫ 播放自定义音乐",
+    musicClose: "♫ 关闭音乐控制",
+    keyboardHint: "电脑: Q / A / Z 左出拳 · E / D / C 右出拳",
+    musicHeader: "通过URL播放自定义音乐",
+    urlLabel: "YouTube / 音频 / 视频 URL",
+    loadUrl: "加载URL",
+    play: "▶ 播放",
+    pause: "暂停",
+    stop: "停止",
+    volumePunch: "击打音量",
+    musicInitial: "粘贴链接并点击“加载URL”。",
+    helpText: "击打时音乐不会中断。YouTube请直接使用播放器内置按钮控制。",
+    nowPlayingDefault: "正在播放",
+    invalidUrl: "请输入以 http:// 或 https:// 开头的有效URL。"
+  },
+  ko: {
+    languageLabel: "🌐 언어",
+    imageAlt: "노자키 마모루 때리기",
+    leftPunch: "왼손 펀치",
+    rightPunch: "오른손 펀치",
+    musicOpen: "♫ 음악 재생",
+    musicClose: "♫ 음악 설정 닫기",
+    keyboardHint: "PC: Q / A / Z 왼손 펀치 · E / D / C 오른손 펀치",
+    musicHeader: "URL로 원하는 음악 재생",
+    urlLabel: "YouTube / 음원 / 영상 URL",
+    loadUrl: "URL 불러오기",
+    play: "재생",
+    pause: "일시정지",
+    stop: "정지",
+    volumePunch: "펀치 음량",
+    musicInitial: "음악 URL을 붙여넣고 'URL 불러오기'를 누르세요.",
+    helpText: "펀치 중에도 음악은 계속 재생됩니다. YouTube는 플레이어 안의 버튼으로 조작하세요.",
+    nowPlayingDefault: "현재 재생 중",
+    invalidUrl: "http:// 또는 https://로 시작하는 URL을 입력해 주세요."
+  }
+};
+
+let currentLang = 'ja';
+
+function applyLanguage(lang) {
+  if (!I18N_DATA[lang]) lang = 'ja';
+  currentLang = lang;
+  document.documentElement.lang = lang;
+  
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (I18N_DATA[lang][key]) {
+      el.textContent = I18N_DATA[lang][key];
+    }
+  });
+
+  document.querySelectorAll('[data-i18n-alt]').forEach(el => {
+    const key = el.dataset.i18nAlt;
+    if (I18N_DATA[lang][key]) {
+      el.alt = I18N_DATA[lang][key];
+    }
+  });
+
+  // 音楽ボタンが開閉状態に合わせて正しく翻訳されるよう更新
+  const musicPanel = document.getElementById('musicPanel');
+  const musicToggle = document.getElementById('musicToggle');
+  if (musicPanel && !musicPanel.hidden) {
+    musicToggle.textContent = I18N_DATA[lang].musicClose;
+  }
+}
+
+document.getElementById('languageSelect').addEventListener('change', e => {
+  applyLanguage(e.target.value);
+});
+
+
+/* =========================================================
+   2. メインのゲームロジック（画像切り替え・反転・ボイス再生）
+   ========================================================= */
+const idle = document.getElementById('idle');
+const animGif = document.getElementById('animGif');
+
+// 静止画像が見つからない場合の予備処理
+idle.onerror = function() {
+  if (this.src.indexOf('idle.jpg') === -1) {
+    this.src = 'idle.jpg';
+  }
+};
+
+// 攻撃アニメーションGIFの設定と完全プリロード
+const PRIMARY_GIF = '野崎守殴る.gif';
+const FALLBACK_GIF = 'punch.gif';
+let activeGifPath = PRIMARY_GIF;
+
+const gifPreloadImg = new Image();
+gifPreloadImg.onerror = function() {
+  activeGifPath = FALLBACK_GIF;
+  const fallbackImg = new Image();
+  fallbackImg.src = FALLBACK_GIF;
+};
+gifPreloadImg.src = PRIMARY_GIF;
+
+// 初期読み込み時点でGIFソースをセット（初回ラグ防止）
+animGif.src = PRIMARY_GIF;
+
+let ready = false;
+let punchSoundVolume = 1;
+
+// Web Audio API による低遅延・高精度同期オーディオシステム
+let audioCtx = null;
+let voiceAudioBuffer = null;
+let currentSourceNode = null;
+let currentGainNode = null;
+
+function initAudioContext() {
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      audioCtx = new AudioContextClass();
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+// 画面タッチやクリックで自動的にAudioContextをアクティブ化
+['pointerdown', 'touchstart', 'keydown'].forEach(evt => {
+  window.addEventListener(evt, initAudioContext, { once: true, passive: true });
+});
+
+async function loadVoiceBuffer() {
+  const urls = [
+    '【VIVANT】私に嘘はつかないで～！.m4a',
+    'voice.m4a'
+  ];
+  for (const url of urls) {
+    try {
+      const response = await fetch(encodeURI(url));
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer();
+        if (!audioCtx) initAudioContext();
+        voiceAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        break;
+      }
+    } catch (e) {}
+  }
+}
+
+// フォールバック用の HTML5 Audio
+const voiceAudio = new Audio('【VIVANT】私に嘘はつかないで～！.m4a');
+voiceAudio.preload = 'auto';
+
+function setPunchSoundVolume(percent) {
+  punchSoundVolume = Math.min(1, Math.max(0, Number(percent) / 100));
+  voiceAudio.volume = punchSoundVolume;
+  document.getElementById('punchVolumeValue').textContent = Math.round(percent) + '%';
+}
+
+function hitSound() {
+  initAudioContext();
+  
+  // 連打時に発生するブツッというデジタルノイズ（途切り音）を消すため、0.01秒でフェードアウト停止処理
+  if (currentSourceNode && currentGainNode && audioCtx) {
+    try {
+      const now = audioCtx.currentTime;
+      currentGainNode.gain.cancelScheduledValues(now);
+      currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, now);
+      currentGainNode.gain.linearRampToValueAtTime(0, now + 0.01);
+      const oldSource = currentSourceNode;
+      setTimeout(() => {
+        try { oldSource.stop(0); oldSource.disconnect(); } catch(e){}
+      }, 12);
+    } catch(e) {}
+    currentSourceNode = null;
+    currentGainNode = null;
+  }
+
+  if (audioCtx && voiceAudioBuffer) {
+    try {
+      const source = audioCtx.createBufferSource();
+      const gainNode = audioCtx.createGain();
+      source.buffer = voiceAudioBuffer;
+      gainNode.gain.value = punchSoundVolume;
+      source.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      source.start(0);
+      currentSourceNode = source;
+      currentGainNode = gainNode;
+      return;
+    } catch (e) {}
+  }
+  
+  try {
+    voiceAudio.currentTime = 0;
+    voiceAudio.volume = punchSoundVolume;
+    const playPromise = voiceAudio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(e => {
+        if (voiceAudio.src.indexOf('voice.m4a') === -1) {
+          voiceAudio.src = 'voice.m4a';
+          voiceAudio.currentTime = 0;
+          voiceAudio.play().catch(() => {});
+        }
+      });
+    }
+  } catch(e) {}
+}
+
+let animTimeout = null;
+
+function punch(side) {
+  if (!ready) return;
+
+  // Web Audio Context のユーザーアクティベーション解除
+  initAudioContext();
+
+  // 左パンチ時は左右反転
+  if (side === 'left') {
+    idle.classList.add('flip-x');
+    animGif.classList.add('flip-x');
+  } else {
+    idle.classList.remove('flip-x');
+    animGif.classList.remove('flip-x');
+  }
+
+  // 音声の即時リセット再生（ノイズ防止対応済）
+  hitSound();
+
+  // DOMを非表示にして再ロードを行うことで、サーバー通信なしでGIFを最初から再生
+  animGif.hidden = true;
+  requestAnimationFrame(() => {
+    animGif.src = activeGifPath;
+    animGif.hidden = false;
+  });
+
+  if (animTimeout) clearTimeout(animTimeout);
+
+  animTimeout = setTimeout(() => {
+    animGif.hidden = true;
+  }, 1200);
+}
+
+// ボタンイベント設定（pointerdownのみに絞り二重発火を完全防止）
+['left', 'right'].forEach(side => {
+  const btn = document.getElementById(side + 'Btn');
+  btn.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    punch(side);
+  }, { passive: false });
+});
+
+// キーボード操作対応
+const PUNCH_KEYS = { KeyQ:'left', KeyA:'left', KeyZ:'left', KeyE:'right', KeyD:'right', KeyC:'right' };
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+  const target = e.target;
+  if (target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName || '')) return;
+  const side = PUNCH_KEYS[e.code];
+  if (!side) return;
+  e.preventDefault();
+  punch(side);
+});
+
+
+/* =========================================================
+   3. 好きな曲を流す (YouTube IFrame API & 音声プレーヤー)
+   ========================================================= */
+const musicToggle = document.getElementById('musicToggle');
+const musicPanel = document.getElementById('musicPanel');
+const nowPlaying = document.getElementById('nowPlaying');
+const youtubeMount = document.getElementById('youtubeMount');
+const musicMedia = document.getElementById('musicMedia');
+const punchVolumeInput = document.getElementById('punchVolume');
+
+// 開閉トグル
+musicToggle.addEventListener('click', () => {
+  const isHidden = musicPanel.hidden;
+  musicPanel.hidden = !isHidden;
+  musicToggle.setAttribute('aria-expanded', String(!isHidden));
+  musicToggle.textContent = isHidden ? I18N_DATA[currentLang].musicClose : I18N_DATA[currentLang].musicOpen;
+});
+
+// 音量スライダー
+punchVolumeInput.addEventListener('input', e => {
+  setPunchSoundVolume(e.target.value);
+});
+
+// YouTube API 読み込み準備
+let ytPlayer = null;
+let isYouTubeReady = false;
+
+window.onYouTubeIframeAPIReady = function() {
+  isYouTubeReady = true;
+};
+
+// YouTube IFrame APIのJSを非同期読み込み
+const ytScript = document.createElement('script');
+ytScript.src = "https://www.youtube.com/iframe_api";
+document.head.appendChild(ytScript);
+
+// URLからYouTube Video IDを抽出する関数
+function parseYouTubeID(url) {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+
+// 安定したYouTube Player生成ヘルパー（file:// ローカル環境エラー153自動対策）
+function createYTPlayer(videoId) {
+  youtubeMount.innerHTML = '';
+
+  // ローカルファイル (file://) の場合は直接標準iframe埋め込みを使用してエラー153を防止
+  if (window.location.protocol === 'file:') {
+    const iframe = document.createElement('iframe');
+    iframe.width = "100%";
+    iframe.height = "188";
+    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1`;
+    iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+    iframe.allowFullscreen = true;
+    youtubeMount.appendChild(iframe);
+    ytPlayer = null;
+    return;
+  }
+
+  youtubeMount.innerHTML = '<div id="ytPlayerContainer"></div>';
+  const origin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : window.location.href;
+
+  try {
+    ytPlayer = new YT.Player('ytPlayerContainer', {
+      height: '188',
+      width: '100%',
+      videoId: videoId,
+      playerVars: {
+        'autoplay': 1,
+        'playsinline': 1,
+        'enablejsapi': 1,
+        'origin': origin,
+        'rel': 0
+      },
+      events: {
+        'onError': function(e) {
+          const note = document.getElementById('musicNote');
+          if (note) {
+            note.textContent = "YouTube動画の読み込みエラー (エラーコード: " + e.data + ")";
+          }
+        }
+      }
+    });
+  } catch (err) {
+    if (ytPlayer && typeof ytPlayer.destroy === 'function') {
+      try { ytPlayer.destroy(); } catch(e){}
+    }
+    ytPlayer = null;
+  }
+}
+
+// フォーム送信（URL読み込み）
+document.getElementById('musicForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const url = document.getElementById('musicURL').value.trim();
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    alert(I18N_DATA[currentLang].invalidUrl);
+    return;
+  }
+
+  const ytID = parseYouTubeID(url);
+  nowPlaying.hidden = false;
+
+  if (ytID) {
+    // YouTube動画のロード処理
+    musicMedia.pause();
+    musicMedia.hidden = true;
+    youtubeMount.hidden = false;
+
+    if (window.location.protocol === 'file:') {
+      createYTPlayer(ytID);
+    } else if (window.YT && window.YT.Player) {
+      createYTPlayer(ytID);
+    } else {
+      let attempts = 0;
+      const checkInterval = setInterval(() => {
+        attempts++;
+        if (window.YT && window.YT.Player) {
+          clearInterval(checkInterval);
+          createYTPlayer(ytID);
+        } else if (attempts > 10) {
+          clearInterval(checkInterval);
+          createYTPlayer(ytID);
+        }
+      }, 300);
+    }
+  } else {
+    // 通常のmp3/mp4/音声ファイルのロード処理
+    if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+      try { ytPlayer.stopVideo(); } catch(e){}
+    }
+    youtubeMount.hidden = true;
+    musicMedia.hidden = false;
+    musicMedia.src = url;
+    musicMedia.play().catch(() => {});
+  }
+});
+
+// 各種再生操作ボタン
+document.getElementById('musicPlay').addEventListener('click', () => {
+  if (!youtubeMount.hidden && ytPlayer && typeof ytPlayer.playVideo === 'function') {
+    ytPlayer.playVideo();
+  } else if (!musicMedia.hidden) {
+    musicMedia.play();
+  }
+});
+
+document.getElementById('musicPause').addEventListener('click', () => {
+  if (!youtubeMount.hidden && ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+    ytPlayer.pauseVideo();
+  } else if (!musicMedia.hidden) {
+    musicMedia.pause();
+  }
+});
+
+document.getElementById('musicStop').addEventListener('click', () => {
+  if (!youtubeMount.hidden && ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+    ytPlayer.stopVideo();
+  } else if (!musicMedia.hidden) {
+    musicMedia.pause();
+    musicMedia.currentTime = 0;
+  }
+});
+
+
+/* =========================================================
+   4. 初期化処理
+   ========================================================= */
+function init() {
+  ready = true;
+  document.getElementById('leftBtn').disabled = false;
+  document.getElementById('rightBtn').disabled = false;
+  applyLanguage('ja');
+  loadVoiceBuffer();
+}
+init();
+
+// モバイルのダブルタップズーム防止処理
+let lastPunchTap = 0;
+[document.getElementById('leftBtn'), document.getElementById('rightBtn')].forEach(b => {
+  b.addEventListener('touchend', e => {
+    const t = Date.now();
+    if (t - lastPunchTap < 350 && e.cancelable) e.preventDefault();
+    lastPunchTap = t;
+  }, { passive: false });
+});
+</script>
+</body>
+</html>
